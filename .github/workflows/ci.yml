@@ -44,4 +44,7 @@ jobs:
           test -f dist/verifier.js
           test -f dist/gnap-profile.js
           test -f dist/keys.js
+          test -f dist/middleware.js
+          test -f dist/component-ids.js
+          test -f dist/serialization.js
           echo "All expected outputs present"

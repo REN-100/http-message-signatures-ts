@@ -1,11 +1,18 @@
 /**
  * TypeScript interfaces for HTTP Message Signatures (RFC 9421)
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc9421
  */
 
-/** Supported signing algorithms */
+/** Supported signing algorithms per RFC 9421 §3.3 */
 export type Algorithm = 'ed25519' | 'ecdsa-p256-sha256' | 'ecdsa-p384-sha384' | 'rsa-pss-sha512';
 
-/** Covered component identifiers per RFC 9421 Section 2.1 */
+/**
+ * Covered component identifiers per RFC 9421 §2.1–§2.2
+ *
+ * Includes all derived components (prefixed with @) and
+ * allows any string for header field names.
+ */
 export type CoveredComponent =
   | '@method'
   | '@target-uri'
@@ -16,7 +23,7 @@ export type CoveredComponent =
   | '@query'
   | '@query-param'
   | '@status'
-  | string; // Header field names
+  | string; // Header field names + parameterized identifiers
 
 /** Options for creating a signer */
 export interface SignerOptions {
@@ -24,7 +31,7 @@ export interface SignerOptions {
   keyId: string;
   /** Signing algorithm */
   algorithm: Algorithm;
-  /** Private key material (PEM string, Buffer, or CryptoKey) */
+  /** Private key material (PEM string or Buffer) */
   privateKey: string | Buffer;
   /** Optional: label for the signature (default: 'sig') */
   label?: string;
@@ -36,7 +43,7 @@ export interface VerifierOptions {
   keyId: string;
   /** Signing algorithm */
   algorithm: Algorithm;
-  /** Public key material */
+  /** Public key material (PEM string or Buffer) */
   publicKey: string | Buffer;
 }
 
@@ -93,9 +100,14 @@ export interface VerifyRequestOptions {
   verifier: Verifier;
   /** Maximum age of signature in seconds */
   maxAge?: number;
+  /**
+   * Which signature label to verify (default: auto-detect first).
+   * Required when multiple signatures are present on the same message (RFC 9421 §4.3).
+   */
+  label?: string;
 }
 
-/** Signature parameters (RFC 9421 Section 2.3) */
+/** Signature parameters (RFC 9421 §2.3) */
 export interface SignatureParams {
   created?: number;
   expires?: number;
@@ -109,15 +121,39 @@ export interface SignatureParams {
 export interface GnapSignerOptions {
   /** Client key identifier used in GNAP grant requests */
   clientKeyId: string;
-  /** Ed25519 or ECDSA private key */
+  /** Ed25519 or ECDSA private key (PEM string or Buffer) */
   privateKey: string | Buffer;
   /** Algorithm (default: 'ed25519') */
   algorithm?: Algorithm;
 }
 
-/** Result of signing a request - contains headers to merge */
+/** Result of signing a request — headers to merge into the outgoing message */
 export interface SignedHeaders {
   'Signature': string;
   'Signature-Input': string;
   'Content-Digest'?: string;
+}
+
+/**
+ * Parsed result from a Signature-Input header containing multiple signatures.
+ * Each entry represents one labeled signature and its parameters.
+ */
+export interface ParsedSignatureInput {
+  label: string;
+  coveredComponents: string[];
+  params: SignatureParams;
+}
+
+/**
+ * Options for the HTTP signature verification middleware.
+ */
+export interface MiddlewareOptions {
+  /** Verifier instance or async function that returns a verifier for a given keyId */
+  verifier: Verifier | ((keyId: string) => Promise<Verifier>);
+  /** Maximum age of signature in seconds (default: 300 = 5 minutes) */
+  maxAge?: number;
+  /** Which signature label to verify (default: auto-detect) */
+  label?: string;
+  /** Custom error handler. Receives the request, response, and error. */
+  onError?: (req: any, res: any, error: Error) => void;
 }

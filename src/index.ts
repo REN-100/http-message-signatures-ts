@@ -17,15 +17,23 @@ export { createVerifier, verifySignature } from './verifier';
 // ─── GNAP / Open Payments Profile ──────────────────────────────
 export { createGnapSigner, signGnapRequest } from './gnap-profile';
 
+// ─── Middleware (Express / Connect / Koa) ──────────────────────
+export { createSignatureMiddleware } from './middleware';
+
 // ─── Signature Base & Components ───────────────────────────────
 export { buildSignatureBase } from './signature-base';
 export { resolveComponent } from './component-ids';
+export type { ComponentContext } from './component-ids';
 
 // ─── Content-Digest (RFC 9530) ─────────────────────────────────
 export { generateContentDigest, verifyContentDigest } from './content-digest';
 
-// ─── Serialization ─────────────────────────────────────────────
-export { serializeSignatureInput, parseSignatureInput } from './serialization';
+// ─── Serialization (Single & Multi-Signature) ──────────────────
+export {
+  serializeSignatureInput,
+  parseSignatureInput,
+  parseMultipleSignatureInputs,
+} from './serialization';
 
 // ─── Key Utilities (JWK / Key Generation) ──────────────────────
 export {
@@ -50,4 +58,6 @@ export type {
   SignatureParams,
   GnapSignerOptions,
   SignedHeaders,
+  ParsedSignatureInput,
+  MiddlewareOptions,
 } from './types';

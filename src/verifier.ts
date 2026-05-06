@@ -10,7 +10,7 @@
 import { createVerify, createPublicKey, verify as ed25519Verify, KeyObject, constants as cryptoConstants } from 'crypto';
 import { buildSignatureBase } from './signature-base';
 import { verifyContentDigest } from './content-digest';
-import { parseSignatureInput } from './serialization';
+import { parseSignatureInput, parseMultipleSignatureInputs } from './serialization';
 import type { Algorithm, Verifier, VerifierOptions, VerifyRequestOptions, SignatureParams } from './types';
 
 /**
@@ -148,7 +148,7 @@ export function createVerifier(options: VerifierOptions): Verifier {
 export async function verifySignature(
   options: VerifyRequestOptions
 ): Promise<boolean> {
-  const { method, url, headers, body, verifier, maxAge } = options;
+  const { method, url, headers, body, verifier, maxAge, label: targetLabel } = options;
 
   // 1. Extract Signature and Signature-Input headers
   const signatureHeader = findHeader(headers, 'signature');
@@ -158,8 +158,23 @@ export async function verifySignature(
     return false;
   }
 
-  // 2. Parse the Signature-Input to get components and params
-  const { label, coveredComponents, params } = parseSignatureInput(signatureInputHeader);
+  // 2. Parse the Signature-Input — supports multiple signatures (RFC 9421 §4.3)
+  let parsed: { label: string; coveredComponents: string[]; params: SignatureParams };
+
+  if (targetLabel) {
+    // Look for a specific label in a multi-signature header
+    const allSigs = parseMultipleSignatureInputs(signatureInputHeader);
+    const match = allSigs.find((s) => s.label === targetLabel);
+    if (!match) {
+      return false; // Requested label not found
+    }
+    parsed = match;
+  } else {
+    // Default: parse the first (or only) signature
+    parsed = parseSignatureInput(signatureInputHeader);
+  }
+
+  const { label, coveredComponents, params } = parsed;
 
   // 3. Extract the signature value from the Signature header
   //    Format: label=:base64value: (RFC 9421 §4.2)
