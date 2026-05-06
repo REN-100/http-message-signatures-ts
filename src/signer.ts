@@ -16,7 +16,6 @@ import type {
   SignerOptions,
   SignRequestOptions,
   SignedHeaders,
-  GnapSignerOptions,
   SignatureParams,
 } from './types';
 import { serializeSignatureInput } from './serialization';
@@ -221,58 +220,4 @@ function algorithmToAlgId(algorithm: Algorithm): string {
   }
 }
 
-// ─────────────── GNAP Convenience Functions ───────────────
 
-/**
- * Create a signer pre-configured for GNAP / Open Payments.
- *
- * Defaults to Ed25519 and sets up the key ID used in GNAP grant requests.
- */
-export function createGnapSigner(options: GnapSignerOptions): Signer {
-  return createSigner({
-    keyId: options.clientKeyId,
-    algorithm: options.algorithm || 'ed25519',
-    privateKey: options.privateKey,
-  });
-}
-
-/**
- * Sign a request using the GNAP-recommended covered components.
- *
- * Open Payments requires: `@method`, `@target-uri`, `authorization` (if present),
- * `content-type` + `content-digest` (for requests with bodies).
- */
-export async function signGnapRequest(options: {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body?: string | Buffer;
-  signer: Signer;
-}): Promise<SignedHeaders> {
-  const { method, url, headers, body, signer } = options;
-
-  // Build covered components per GNAP httpsig profile
-  const coveredComponents: string[] = ['@method', '@target-uri'];
-
-  // Include authorization if present
-  if (headers['authorization'] || headers['Authorization']) {
-    coveredComponents.push('authorization');
-  }
-
-  // Include body-related components for methods with bodies
-  const hasBody = body && ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase());
-  if (hasBody) {
-    coveredComponents.push('content-type', 'content-digest');
-  }
-
-  return signRequest({
-    method,
-    url,
-    headers,
-    body,
-    signer,
-    coveredComponents,
-    includeContentDigest: !!hasBody,
-    tag: 'gnap',
-  });
-}

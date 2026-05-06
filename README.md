@@ -1,23 +1,36 @@
-# HTTP Message Signatures for TypeScript (`@shujaapay/http-message-signatures`)
+# HTTP Message Signatures for TypeScript
 
-> A production-quality RFC 9421 HTTP Message Signatures library for TypeScript/Node.js, optimized for GNAP authentication and Open Payments integration.
+> **RFC 9421 HTTP Message Signatures** — production-ready, zero-dependency, GNAP-optimized signing for Open Payments and Interledger.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![RFC 9421](https://img.shields.io/badge/RFC-9421-blue.svg)](https://www.rfc-editor.org/rfc/rfc9421)
+[![RFC 9530](https://img.shields.io/badge/RFC-9530-blue.svg)](https://www.rfc-editor.org/rfc/rfc9530)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
 
-## Overview
+---
 
-This library implements [RFC 9421 HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421), providing the cryptographic signing layer required by GNAP (RFC 9635) for proof-of-possession. It is designed as a standalone package that can be used independently or as the signing foundation for Kiota GNAP authentication providers.
+## Why This Library?
 
-## Features
+The [Interledger Foundation](https://interledger.org) and [Open Payments](https://openpayments.dev) ecosystem require HTTP Message Signatures (RFC 9421) for all authenticated API requests. This library provides:
 
-- **Full RFC 9421 compliance** - Signature base construction, component identifiers, and serialization
-- **Multiple algorithms** - Ed25519, ECDSA-P256, RSA-PSS-SHA512
-- **GNAP-optimized** - Pre-configured profiles for Open Payments key proofs
-- **Content-Digest** - RFC 9530 support for request body integrity
-- **Zero dependencies** - Uses Node.js native `crypto` module
-- **TypeScript-first** - Full type safety with exported interfaces
+- **Full RFC 9421 compliance** — tested against Appendix B reference messages
+- **All required algorithms** — Ed25519 (recommended), ECDSA-P256, ECDSA-P384, RSA-PSS-SHA512
+- **GNAP httpsig profile** — automatic covered component selection per RFC 9635 §7.3.3
+- **Content-Digest (RFC 9530)** — request body integrity with SHA-256/SHA-512
+- **Zero runtime dependencies** — only Node.js native `crypto`
+- **TypeScript-first** — full type safety, exported interfaces, IntelliSense-ready
+
+### Comparison with `@interledger/http-signature-utils`
+
+| Feature | This library | `http-signature-utils` |
+|---------|-------------|----------------------|
+| Algorithms | Ed25519, ECDSA-P256, P384, RSA-PSS | Ed25519 only |
+| GNAP profile | Built-in (`signGnapRequest`) | Manual setup |
+| Verification | Full (`verifySignature`) | Partial |
+| Content-Digest | Built-in | Separate |
+| Dependencies | 0 runtime | Multiple |
+| Target | Node.js ≥18 | Node.js |
 
 ## Installation
 
@@ -30,151 +43,180 @@ npm install @shujaapay/http-message-signatures
 ### Sign a Request
 
 ```typescript
-import { signRequest, createSigner } from '@shujaapay/http-message-signatures';
+import { createSigner, signRequest } from '@shujaapay/http-message-signatures';
 
 const signer = createSigner({
   keyId: 'my-key-id',
   algorithm: 'ed25519',
-  privateKey: myEd25519PrivateKey,
+  privateKey: myEd25519PrivateKeyPem,
 });
 
 const signedHeaders = await signRequest({
   method: 'POST',
   url: 'https://wallet.example/incoming-payments',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ walletAddress: 'https://wallet.example/alice' }),
   signer,
   coveredComponents: ['@method', '@target-uri', 'content-type', 'content-digest'],
   includeContentDigest: true,
 });
 
-// signedHeaders now contains:
-// - Signature: sig=:base64-encoded-signature:
-// - Signature-Input: sig=("@method" "@target-uri" "content-type" "content-digest");...
-// - Content-Digest: sha-256=:base64-encoded-hash:
+// Merge into your outgoing request:
+// signedHeaders.Signature       → sig=:base64-signature:
+// signedHeaders['Signature-Input'] → sig=("@method" "@target-uri" ...);created=...
+// signedHeaders['Content-Digest']  → sha-256=:base64-hash:
 ```
 
 ### Verify a Signature
 
 ```typescript
-import { verifySignature, createVerifier } from '@shujaapay/http-message-signatures';
+import { createVerifier, verifySignature } from '@shujaapay/http-message-signatures';
 
 const verifier = createVerifier({
   keyId: 'their-key-id',
   algorithm: 'ed25519',
-  publicKey: theirEd25519PublicKey,
+  publicKey: theirEd25519PublicKeyPem,
 });
 
 const isValid = await verifySignature({
   method: 'POST',
   url: 'https://wallet.example/incoming-payments',
-  headers: receivedHeaders,
-  body: receivedBody,
+  headers: incomingHeaders,
+  body: incomingBody,
   verifier,
+  maxAge: 300, // reject signatures older than 5 minutes
 });
 ```
 
-### GNAP Profile (Open Payments)
+### GNAP / Open Payments Profile
 
 ```typescript
 import { createGnapSigner, signGnapRequest } from '@shujaapay/http-message-signatures';
 
-// Pre-configured for Open Payments GNAP requirements
-const gnapSigner = createGnapSigner({
-  clientKeyId: 'client-key-1',
-  privateKey: myPrivateKey,
-  algorithm: 'ed25519',
+// Pre-configured for Open Payments — defaults to Ed25519
+const signer = createGnapSigner({
+  clientKeyId: 'my-wallet-key',
+  privateKey: myPrivateKeyPem,
 });
 
+// Grant request to authorization server
 const signed = await signGnapRequest({
   method: 'POST',
   url: 'https://auth.wallet.example/',
-  headers: { 'Content-Type': 'application/json' },
-  body: grantRequestBody,
-  signer: gnapSigner,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'GNAP continuation-token',
+  },
+  body: JSON.stringify({
+    access_token: {
+      access: [{ type: 'incoming-payment', actions: ['create', 'read'] }],
+    },
+  }),
+  signer,
 });
+// Automatically covers: @method, @target-uri, authorization, content-type, content-digest
+// Automatically sets: tag="gnap", includeContentDigest=true
 ```
 
 ## API Reference
 
-### `createSigner(options)`
-
-Creates a signing context for generating HTTP Message Signatures.
+### `createSigner(options: SignerOptions): Signer`
 
 | Parameter | Type | Description |
 |---|---|---|
 | `keyId` | `string` | Identifier for the signing key |
-| `algorithm` | `Algorithm` | Signing algorithm |
-| `privateKey` | `CryptoKey \| Buffer` | Private key material |
+| `algorithm` | `Algorithm` | `'ed25519'` \| `'ecdsa-p256-sha256'` \| `'ecdsa-p384-sha384'` \| `'rsa-pss-sha512'` |
+| `privateKey` | `string \| Buffer` | PEM-encoded private key or raw key buffer |
 
-### `signRequest(options)`
+### `signRequest(options: SignRequestOptions): Promise<SignedHeaders>`
 
-Signs an HTTP request and returns headers with signature.
+Returns `{ Signature, 'Signature-Input', 'Content-Digest'? }` — merge into outgoing headers.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `method` | `string` | HTTP method |
-| `url` | `string` | Request URL |
-| `headers` | `Record<string, string>` | Request headers |
-| `body` | `string \| Buffer` | Request body (optional) |
-| `signer` | `Signer` | Signer from `createSigner` |
-| `coveredComponents` | `string[]` | Components to include in signature |
-| `includeContentDigest` | `boolean` | Whether to add Content-Digest |
+### `createVerifier(options: VerifierOptions): Verifier`
 
-### Supported Algorithms
+### `verifySignature(options: VerifyRequestOptions): Promise<boolean>`
 
-| Algorithm | OID | Use Case |
-|---|---|---|
-| `ed25519` | Ed25519 | Recommended for GNAP |
-| `ecdsa-p256-sha256` | ECDSA P-256 | Alternative for GNAP |
-| `rsa-pss-sha512` | RSA-PSS | Legacy compatibility |
+Parses `Signature-Input`, reconstructs the base, verifies the signature, checks `Content-Digest` integrity, and enforces `maxAge`/`expires`.
+
+### `createGnapSigner(options: GnapSignerOptions): Signer`
+
+Convenience wrapper — defaults to Ed25519 with GNAP key ID.
+
+### `signGnapRequest(options): Promise<SignedHeaders>`
+
+Auto-selects covered components per GNAP httpsig proof method (RFC 9635 §7.3.3).
+
+### Utility Functions
+
+| Function | Purpose |
+|---|---|
+| `buildSignatureBase()` | Construct the signature base string (RFC 9421 §2.5) |
+| `resolveComponent()` | Resolve a component identifier to its value (RFC 9421 §2.1) |
+| `generateContentDigest()` | Generate Content-Digest header (RFC 9530) |
+| `verifyContentDigest()` | Verify Content-Digest against body |
+| `serializeSignatureInput()` | Serialize Signature-Input header value |
+| `parseSignatureInput()` | Parse Signature-Input header value |
 
 ## Project Structure
 
 ```
 src/
   index.ts              # Public API exports
-  signer.ts             # Signing implementation
-  verifier.ts           # Verification implementation
-  signature-base.ts     # Signature base construction (RFC 9421 Section 2.5)
-  component-ids.ts      # Component identifier resolution (RFC 9421 Section 2.1)
+  signer.ts             # Signing implementation (RFC 9421 §3.1)
+  verifier.ts           # Verification implementation (RFC 9421 §3.2)
+  signature-base.ts     # Signature base construction (RFC 9421 §2.5)
+  component-ids.ts      # Component identifier resolution (RFC 9421 §2.1)
   content-digest.ts     # Content-Digest generation (RFC 9530)
-  serialization.ts      # Signature-Input serialization
-  gnap-profile.ts       # GNAP-specific convenience functions
+  serialization.ts      # Signature-Input serialization (RFC 9421 §4.1)
+  gnap-profile.ts       # GNAP convenience functions (RFC 9635 §7.3.3)
   types.ts              # TypeScript interfaces
 tests/
-  signer.test.ts
-  verifier.test.ts
-  signature-base.test.ts
-  gnap-profile.test.ts
-  fixtures/              # RFC 9421 test vectors
+  signer.test.ts        # Core signing tests
+  verifier.test.ts      # All algorithms + verification edge cases
+  signature-base.test.ts # Component resolution + base construction
+  gnap-profile.test.ts  # GNAP/Open Payments scenarios
+  rfc9421-compliance.test.ts  # RFC Appendix B test vectors
+  fixtures/
+    rfc9421-test-messages.ts  # Canonical test messages from the RFC
 ```
 
-## Relationship to Other Projects
+## Supported Algorithms
 
-This library is part of the **ShujaaPay GNAP Stack**, funded by the Interledger Foundation:
+| Algorithm | RFC Section | Use Case |
+|---|---|---|
+| `ed25519` | [§3.3.6](https://www.rfc-editor.org/rfc/rfc9421#section-3.3.6) | **Recommended** for GNAP/Open Payments |
+| `ecdsa-p256-sha256` | [§3.3.4](https://www.rfc-editor.org/rfc/rfc9421#section-3.3.4) | Alternative asymmetric |
+| `ecdsa-p384-sha384` | [§3.3.5](https://www.rfc-editor.org/rfc/rfc9421#section-3.3.5) | Higher security curve |
+| `rsa-pss-sha512` | [§3.3.1](https://www.rfc-editor.org/rfc/rfc9421#section-3.3.1) | Legacy RSA compatibility |
 
-- [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) - GNAP OpenAPI extension (WS1)
-- **This repo** - HTTP Message Signatures (Workstream 4)
-- Kiota GNAP Provider (TypeScript) - Coming soon (WS2)
-- Kiota GNAP Provider (Python) - Coming soon (WS3)
+## Related Projects
+
+This library is part of the **ShujaaPay GNAP Stack**, funded by the [Interledger Foundation](https://interledger.org):
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) | `x-gnap` OpenAPI extension for GNAP security | Proposal ready |
+| **`http-message-signatures-ts`** | **This repo** — RFC 9421 signing library | ✅ Complete |
+| [`kiota-gnap-auth-ts`](https://github.com/REN-100/kiota-gnap-auth-ts) | Kiota GNAP auth provider (TypeScript) | In progress |
+| [`kiota-gnap-auth-python`](https://github.com/REN-100/kiota-gnap-auth-python) | Kiota GNAP auth provider (Python) | In progress |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Key areas:
-- Testing against RFC 9421 test vectors
-- Additional algorithm support
-- Performance benchmarks
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Key areas for contribution:
+
+- Testing against `@interledger/http-signature-utils` for interoperability
+- Express/Koa verification middleware
+- HMAC-SHA256 and JWK key import support
+- Browser/Deno WebCrypto compatibility
 
 ## References
 
-- [RFC 9421 - HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421)
-- [RFC 9530 - Digest Fields](https://www.rfc-editor.org/rfc/rfc9530)
-- [RFC 9635 - GNAP](https://www.rfc-editor.org/rfc/rfc9635)
-- [Open Payments](https://openpayments.dev)
+- [RFC 9421 — HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421)
+- [RFC 9530 — Digest Fields](https://www.rfc-editor.org/rfc/rfc9530)
+- [RFC 9635 — GNAP](https://www.rfc-editor.org/rfc/rfc9635)
+- [Open Payments Specification](https://openpayments.dev)
+- [Interledger Foundation](https://interledger.org)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.
