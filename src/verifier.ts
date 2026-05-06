@@ -1,5 +1,5 @@
 /**
- * HTTP Message Signature Verification — RFC 9421
+ * HTTP Message Signature Verification — RFC 9421 §3.2
  *
  * Verifies HTTP request/response signatures using Ed25519, ECDSA-P256/P384,
  * or RSA-PSS-SHA512. Zero external dependencies — uses Node.js native `crypto`.
@@ -7,14 +7,24 @@
  * @see https://www.rfc-editor.org/rfc/rfc9421#section-3.2
  */
 
-import { createVerify, createPublicKey, verify as ed25519Verify, KeyObject } from 'crypto';
+import { createVerify, createPublicKey, verify as ed25519Verify, KeyObject, constants as cryptoConstants } from 'crypto';
 import { buildSignatureBase } from './signature-base';
 import { verifyContentDigest } from './content-digest';
 import { parseSignatureInput } from './serialization';
 import type { Algorithm, Verifier, VerifierOptions, VerifyRequestOptions, SignatureParams } from './types';
 
 /**
+ * RSA-PSS salt length per RFC 9421 §3.3.1
+ */
+const PSS_SALT_LENGTH = 64;
+
+/**
  * Resolve raw key material into a Node.js `KeyObject` for verification.
+ *
+ * Supports:
+ * - PEM-encoded SPKI strings
+ * - DER-encoded SPKI Buffers
+ * - Raw 32-byte Ed25519 public key Buffers (auto-wrapped with RFC 8410 SPKI prefix)
  */
 function resolvePublicKey(key: string | Buffer): KeyObject {
   if (typeof key === 'string') {
@@ -24,10 +34,9 @@ function resolvePublicKey(key: string | Buffer): KeyObject {
     try {
       return createPublicKey({ key, format: 'der', type: 'spki' });
     } catch {
-      // Assume raw Ed25519 32-byte public key
+      // Assume raw Ed25519 32-byte public key — wrap with SPKI prefix (RFC 8410)
       return createPublicKey({
         key: Buffer.concat([
-          // Ed25519 SPKI prefix (RFC 8410)
           Buffer.from('302a300506032b6570032100', 'hex'),
           key,
         ]),
@@ -43,6 +52,8 @@ function resolvePublicKey(key: string | Buffer): KeyObject {
 
 /**
  * Create a low-level verification function for the given algorithm.
+ *
+ * @see RFC 9421 §3.3 for algorithm-specific requirements
  */
 function createVerifyFn(
   algorithm: Algorithm,
@@ -50,11 +61,13 @@ function createVerifyFn(
 ): (data: Buffer, signature: Buffer) => Promise<boolean> {
   switch (algorithm) {
     case 'ed25519':
+      // RFC 9421 §3.3.6 — EdDSA using curve edwards25519
       return async (data: Buffer, signature: Buffer) => {
         return ed25519Verify(undefined, data, keyObj, signature);
       };
 
     case 'ecdsa-p256-sha256':
+      // RFC 9421 §3.3.4 — MUST use IEEE P1363 raw (r||s) encoding
       return async (data: Buffer, signature: Buffer) => {
         const verifier = createVerify('SHA256');
         verifier.update(data);
@@ -65,6 +78,7 @@ function createVerifyFn(
       };
 
     case 'ecdsa-p384-sha384':
+      // RFC 9421 §3.3.5 — MUST use IEEE P1363 raw (r||s) encoding
       return async (data: Buffer, signature: Buffer) => {
         const verifier = createVerify('SHA384');
         verifier.update(data);
@@ -75,14 +89,15 @@ function createVerifyFn(
       };
 
     case 'rsa-pss-sha512':
+      // RFC 9421 §3.3.1 — RSASSA-PSS with SHA-512, salt=64
       return async (data: Buffer, signature: Buffer) => {
         const verifier = createVerify('SHA512');
         verifier.update(data);
         return verifier.verify(
           {
             key: keyObj,
-            padding: 6, // RSA_PKCS1_PSS_PADDING
-            saltLength: 64,
+            padding: cryptoConstants.RSA_PKCS1_PSS_PADDING,
+            saltLength: PSS_SALT_LENGTH,
           },
           signature
         );
@@ -119,28 +134,16 @@ export function createVerifier(options: VerifierOptions): Verifier {
 }
 
 /**
- * Verify an HTTP Message Signature per RFC 9421.
+ * Verify an HTTP Message Signature per RFC 9421 §3.2.
  *
  * Performs the following checks:
  * 1. Parses the `Signature-Input` header to extract covered components + params
- * 2. Reconstructs the signature base from the request
- * 3. Verifies the signature using the provided verifier
- * 4. Optionally checks `Content-Digest` integrity
- * 5. Optionally enforces signature age (`maxAge`)
+ * 2. Checks signature age (maxAge) and expiration (expires)
+ * 3. Verifies `Content-Digest` integrity (RFC 9530) if present
+ * 4. Reconstructs the signature base from the request
+ * 5. Verifies the cryptographic signature
  *
  * @returns `true` if the signature is valid, `false` otherwise
- *
- * @example
- * ```ts
- * const isValid = await verifySignature({
- *   method: 'POST',
- *   url: 'https://wallet.example/incoming-payments',
- *   headers: incomingHeaders,
- *   body: incomingBody,
- *   verifier,
- *   maxAge: 300, // reject signatures older than 5 minutes
- * });
- * ```
  */
 export async function verifySignature(
   options: VerifyRequestOptions
@@ -159,7 +162,7 @@ export async function verifySignature(
   const { label, coveredComponents, params } = parseSignatureInput(signatureInputHeader);
 
   // 3. Extract the signature value from the Signature header
-  //    Format: label=:base64value:
+  //    Format: label=:base64value: (RFC 9421 §4.2)
   const sigRegex = new RegExp(`${label}=:([A-Za-z0-9+/=]+):`);
   const sigMatch = signatureHeader.match(sigRegex);
   if (!sigMatch) {
@@ -167,23 +170,23 @@ export async function verifySignature(
   }
   const signatureBytes = Buffer.from(sigMatch[1], 'base64');
 
-  // 4. Check signature age if maxAge is specified
+  // 4. Check signature age if maxAge is specified (RFC 9421 §3.2.1)
   if (maxAge !== undefined && params.created !== undefined) {
     const now = Math.floor(Date.now() / 1000);
     if (now - params.created > maxAge) {
-      return false; // Signature is too old
+      return false;
     }
   }
 
-  // 5. Check expiration
+  // 5. Check expiration (RFC 9421 §2.3)
   if (params.expires !== undefined) {
     const now = Math.floor(Date.now() / 1000);
     if (now > params.expires) {
-      return false; // Signature has expired
+      return false;
     }
   }
 
-  // 6. Verify Content-Digest if present in covered components
+  // 6. Verify Content-Digest if present in covered components (RFC 9530)
   if (coveredComponents.includes('content-digest') && body) {
     const digestHeader = findHeader(headers, 'content-digest');
     if (!digestHeader) {
@@ -194,14 +197,14 @@ export async function verifySignature(
     }
   }
 
-  // 7. Reconstruct the signature base
+  // 7. Reconstruct the signature base (RFC 9421 §2.5)
   const signatureBase = buildSignatureBase(
     coveredComponents,
     params,
     { method, url, headers }
   );
 
-  // 8. Verify the signature
+  // 8. Verify the cryptographic signature
   return verifier.verify(
     Buffer.from(signatureBase, 'utf-8'),
     signatureBytes

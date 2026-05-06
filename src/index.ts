@@ -27,6 +27,16 @@ export { generateContentDigest, verifyContentDigest } from './content-digest';
 // ─── Serialization ─────────────────────────────────────────────
 export { serializeSignatureInput, parseSignatureInput } from './serialization';
 
+// ─── Key Utilities (JWK / Key Generation) ──────────────────────
+export {
+  generateKeyPair,
+  exportPublicJwk,
+  importPublicJwk,
+  importPrivateJwk,
+  algorithmToJwkAlg,
+} from './keys';
+export type { GeneratedKeyPair, JsonWebKey } from './keys';
+
 // ─── Types ─────────────────────────────────────────────────────
 export type {
   Signer,

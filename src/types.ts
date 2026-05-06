@@ -78,8 +78,10 @@ export interface SignRequestOptions {
   expires?: number;
   /** Nonce for replay protection */
   nonce?: string;
-  /** Signature tag */
+  /** Signature tag (e.g., 'gnap') */
   tag?: string;
+  /** Signature label (default: 'sig'). Use unique labels for multiple signatures (RFC 9421 §4.3) */
+  label?: string;
 }
 
 /** Options for verifying an HTTP signature */

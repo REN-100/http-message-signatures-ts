@@ -49,6 +49,20 @@ describe('Component Identifier Resolution (RFC 9421 §2.1–§2.2)', () => {
     expect(resolveComponent('@query', ctx)).toBe('?');
   });
 
+  // RFC 9421 §2.2.7: URL ending with "?" (empty query) MUST also return "?"
+  test('@query with empty query string (url?) returns "?"', () => {
+    const ctx = { method: 'GET', url: 'https://example.com/path?', headers: {} };
+    expect(resolveComponent('@query', ctx)).toBe('?');
+  });
+
+  test('@query-param resolves named parameter', () => {
+    expect(resolveComponent('@query-param;name="status"', context)).toBe('active');
+  });
+
+  test('@query-param returns undefined for missing parameter', () => {
+    expect(resolveComponent('@query-param;name="missing"', context)).toBeUndefined();
+  });
+
   test('header field resolves case-insensitively', () => {
     expect(resolveComponent('content-type', context)).toBe('application/json');
     expect(resolveComponent('authorization', context)).toBe('GNAP token123');

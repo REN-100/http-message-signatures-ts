@@ -1,5 +1,5 @@
 /**
- * HTTP Message Signature Signing — RFC 9421
+ * HTTP Message Signature Signing — RFC 9421 §3.1
  *
  * Creates signers and signs HTTP requests using Ed25519, ECDSA-P256/P384,
  * or RSA-PSS-SHA512. Zero external dependencies — uses Node.js native `crypto`.
@@ -7,7 +7,7 @@
  * @see https://www.rfc-editor.org/rfc/rfc9421#section-3.1
  */
 
-import { createSign, createPrivateKey, sign as ed25519Sign, KeyObject } from 'crypto';
+import { createSign, createPrivateKey, sign as ed25519Sign, KeyObject, constants as cryptoConstants } from 'crypto';
 import { buildSignatureBase } from './signature-base';
 import { generateContentDigest } from './content-digest';
 import type {
@@ -21,23 +21,37 @@ import type {
 import { serializeSignatureInput } from './serialization';
 
 /**
- * Resolve raw key material (PEM string, Buffer, or CryptoKey) into a
+ * Default signature label used when none is specified.
+ * Per RFC 9421 §4.1, labels are arbitrary tokens chosen by the signer.
+ */
+const DEFAULT_LABEL = 'sig';
+
+/**
+ * RSA-PSS salt length per RFC 9421 §3.3.1:
+ * "Using RSASSA-PSS with SHA-512 and a salt length of 64 bytes"
+ */
+const PSS_SALT_LENGTH = 64;
+
+/**
+ * Resolve raw key material (PEM string or Buffer) into a
  * Node.js `KeyObject` for signing.
+ *
+ * Supports:
+ * - PEM-encoded PKCS#8 strings (most common)
+ * - DER-encoded PKCS#8 Buffers
+ * - Raw 32-byte Ed25519 seed Buffers (auto-wrapped with RFC 8410 PKCS#8 prefix)
  */
 function resolvePrivateKey(key: string | Buffer): KeyObject {
   if (typeof key === 'string') {
-    // PEM-encoded string
     return createPrivateKey(key);
   }
   if (Buffer.isBuffer(key)) {
-    // Raw key bytes — try PKCS#8 DER first, fall back to raw Ed25519 seed
     try {
       return createPrivateKey({ key, format: 'der', type: 'pkcs8' });
     } catch {
-      // Assume raw Ed25519 32-byte seed
+      // Assume raw Ed25519 32-byte seed — wrap with PKCS#8 prefix (RFC 8410)
       return createPrivateKey({
         key: Buffer.concat([
-          // Ed25519 PKCS#8 prefix (RFC 8410)
           Buffer.from('302e020100300506032b657004220420', 'hex'),
           key,
         ]),
@@ -53,6 +67,12 @@ function resolvePrivateKey(key: string | Buffer): KeyObject {
 
 /**
  * Create a low-level signing function for the given algorithm.
+ *
+ * Algorithm implementations per RFC 9421 §3.3:
+ * - Ed25519: RFC 9421 §3.3.6 — EdDSA using curve edwards25519
+ * - ECDSA-P256: RFC 9421 §3.3.4 — IEEE P1363 (r||s) encoding, NOT DER
+ * - ECDSA-P384: RFC 9421 §3.3.5 — IEEE P1363 (r||s) encoding, NOT DER
+ * - RSA-PSS:   RFC 9421 §3.3.1 — RSASSA-PSS with SHA-512, salt=64 bytes
  */
 function createSignFn(
   algorithm: Algorithm,
@@ -60,11 +80,14 @@ function createSignFn(
 ): (data: Buffer) => Promise<Buffer> {
   switch (algorithm) {
     case 'ed25519':
+      // RFC 9421 §3.3.6 — EdDSA using curve edwards25519
       return async (data: Buffer) => {
         return ed25519Sign(undefined, data, keyObj);
       };
 
     case 'ecdsa-p256-sha256':
+      // RFC 9421 §3.3.4 — ECDSA P-256 with SHA-256
+      // MUST use IEEE P1363 raw (r||s) encoding, NOT ASN.1 DER
       return async (data: Buffer) => {
         const signer = createSign('SHA256');
         signer.update(data);
@@ -72,6 +95,8 @@ function createSignFn(
       };
 
     case 'ecdsa-p384-sha384':
+      // RFC 9421 §3.3.5 — ECDSA P-384 with SHA-384
+      // MUST use IEEE P1363 raw (r||s) encoding, NOT ASN.1 DER
       return async (data: Buffer) => {
         const signer = createSign('SHA384');
         signer.update(data);
@@ -79,13 +104,15 @@ function createSignFn(
       };
 
     case 'rsa-pss-sha512':
+      // RFC 9421 §3.3.1 — RSASSA-PSS using SHA-512
+      // Salt length: 64 octets, mask generation function: MGF1 with SHA-512
       return async (data: Buffer) => {
         const signer = createSign('SHA512');
         signer.update(data);
         return signer.sign({
           key: keyObj,
-          padding: 6, // RSA_PKCS1_PSS_PADDING
-          saltLength: 64,
+          padding: cryptoConstants.RSA_PKCS1_PSS_PADDING,
+          saltLength: PSS_SALT_LENGTH,
         });
       };
 
@@ -120,10 +147,13 @@ export function createSigner(options: SignerOptions): Signer {
 }
 
 /**
- * Sign an HTTP request per RFC 9421.
+ * Sign an HTTP request per RFC 9421 §3.1.
  *
  * Returns an object containing `Signature`, `Signature-Input`, and
  * optionally `Content-Digest` headers. Merge these into the outgoing request.
+ *
+ * @param options.label - Signature label (default: 'sig'). Use unique labels
+ *   when multiple signatures are needed on the same message (RFC 9421 §4.3).
  *
  * @example
  * ```ts
@@ -135,6 +165,7 @@ export function createSigner(options: SignerOptions): Signer {
  *   signer,
  *   coveredComponents: ['@method', '@target-uri', 'content-type', 'content-digest'],
  *   includeContentDigest: true,
+ *   label: 'sig1', // optional, defaults to 'sig'
  * });
  * ```
  */
@@ -154,6 +185,7 @@ export async function signRequest(
     expires,
     nonce,
     tag,
+    label = DEFAULT_LABEL,
   } = options;
 
   // Clone headers so we don't mutate the caller's object
@@ -170,7 +202,7 @@ export async function signRequest(
     result['Content-Digest'] = digest;
   }
 
-  // 2. Build signature parameters
+  // 2. Build signature parameters (RFC 9421 §2.3)
   const params: SignatureParams = {
     created: created ?? Math.floor(Date.now() / 1000),
     keyid: signer.keyId,
@@ -191,11 +223,10 @@ export async function signRequest(
   const signatureBytes = await signer.sign(Buffer.from(signatureBase, 'utf-8'));
   const signatureB64 = signatureBytes.toString('base64');
 
-  // 5. Build the Signature-Input header
-  const label = 'sig';
+  // 5. Build the Signature-Input header (RFC 9421 §4.1)
   const sigInput = serializeSignatureInput(label, coveredComponents, params);
 
-  // 6. Build the Signature header
+  // 6. Build the Signature header (RFC 9421 §4.2)
   result['Signature-Input'] = sigInput;
   result['Signature'] = `${label}=:${signatureB64}:`;
 
@@ -204,6 +235,7 @@ export async function signRequest(
 
 /**
  * Map our Algorithm type to the RFC 9421 `alg` parameter identifier.
+ * Per RFC 9421 §6.2, algorithm identifiers are opaque strings.
  */
 function algorithmToAlgId(algorithm: Algorithm): string {
   switch (algorithm) {
@@ -219,5 +251,3 @@ function algorithmToAlgId(algorithm: Algorithm): string {
       return algorithm;
   }
 }
-
-

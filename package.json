@@ -4,12 +4,24 @@
   "description": "RFC 9421 HTTP Message Signatures for TypeScript/Node.js - GNAP-optimized signing for Open Payments",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "lint": "eslint src/",
-    "prepublishOnly": "npm run build"
+    "test:coverage": "jest --coverage",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm run test && npm run build"
   },
   "keywords": [
     "http-signatures",
@@ -21,7 +33,10 @@
     "content-digest",
     "rfc-9530",
     "cryptography",
-    "authentication"
+    "authentication",
+    "ed25519",
+    "ecdsa",
+    "http-message-signatures"
   ],
   "author": "Rewel Mumbo <rewelmumbo1@gmail.com>",
   "license": "MIT",
@@ -29,15 +44,21 @@
     "type": "git",
     "url": "https://github.com/REN-100/http-message-signatures-ts"
   },
+  "bugs": {
+    "url": "https://github.com/REN-100/http-message-signatures-ts/issues"
+  },
+  "homepage": "https://github.com/REN-100/http-message-signatures-ts#readme",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "@types/node": "^20.0.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.0",
-    "@types/jest": "^29.5.0",
-    "eslint": "^8.56.0"
+    "@types/jest": "^29.5.0"
   }
 }
