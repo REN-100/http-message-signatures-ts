@@ -34,6 +34,20 @@ The [Interledger Foundation](https://interledger.org) and [Open Payments](https:
 | Dependencies | 0 runtime | Multiple |
 | Target | Node.js ≥18 | Node.js |
 
+### Real-World Integration: ShujaaPay
+
+[ShujaaPay](https://www.shujaapay.me) is a multi-currency fintech platform built on the Open Payments standard. This library is the cryptographic backbone of our payment infrastructure:
+
+**🔐 Gateway Signature Verification** — Every incoming API request to the ShujaaPay gateway is verified using `createSignatureMiddleware`, ensuring that only authenticated clients with valid Ed25519 key pairs can initiate payments, manage wallets, or access account data.
+
+**💸 Wallet-to-Wallet Transfers** — When ShujaaPay initiates an outgoing payment to another Open Payments-compliant wallet (e.g., Rafiki-based wallets), the gateway uses `signGnapRequest` to sign GNAP grant requests and resource access calls, enabling secure cross-wallet interoperability without sharing secrets.
+
+**🌍 Web Monetization** — ShujaaPay supports [Web Monetization](https://webmonetization.org) streaming payments. The `signRequest` function signs each micropayment instruction sent to receiving wallets, while `verifySignature` validates incoming payment notifications — all standards-compliant and interoperable with the broader Interledger network.
+
+**🔑 Key Management** — Client key pairs are generated via `generateKeyPair('ed25519')` and published as JWK on each wallet address's `jwks.json` endpoint using `exportPublicJwk`, enabling peer wallets and authorization servers to verify our signatures without any out-of-band key exchange.
+
+> This library exists because we needed it in production. Every feature is driven by real payment flows, tested against real Open Payments interactions, and designed to work out of the box for any fintech building on Interledger.
+
 ## Installation
 
 ```bash
