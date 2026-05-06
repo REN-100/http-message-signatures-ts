@@ -191,11 +191,11 @@ tests/
 
 ## Related Projects
 
-This library is part of the **ShujaaPay GNAP Stack**, funded by the [Interledger Foundation](https://interledger.org):
+This library is part of the **ShujaaPay GNAP Stack**, built for the [Open Payments](https://openpayments.dev) ecosystem:
 
 | Repo | Description | Status |
 |------|-------------|--------|
-| [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) | `x-gnap` OpenAPI extension for GNAP security | Proposal ready |
+| [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) | `x-gnap` OpenAPI extension for GNAP security | Planned |
 | **`http-message-signatures-ts`** | **This repo** — RFC 9421 signing library | ✅ Complete |
 | [`kiota-gnap-auth-ts`](https://github.com/REN-100/kiota-gnap-auth-ts) | Kiota GNAP auth provider (TypeScript) | In progress |
 | [`kiota-gnap-auth-python`](https://github.com/REN-100/kiota-gnap-auth-python) | Kiota GNAP auth provider (Python) | In progress |
@@ -205,8 +205,7 @@ This library is part of the **ShujaaPay GNAP Stack**, funded by the [Interledger
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Key areas for contribution:
 
 - Testing against `@interledger/http-signature-utils` for interoperability
-- Express/Koa verification middleware
-- HMAC-SHA256 and JWK key import support
+- HMAC-SHA256 algorithm support
 - Browser/Deno WebCrypto compatibility
 
 ## References
