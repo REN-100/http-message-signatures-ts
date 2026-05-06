@@ -1,6 +1,8 @@
 # HTTP Message Signatures for TypeScript
 
 > **RFC 9421 HTTP Message Signatures** — production-ready, zero-dependency, GNAP-optimized signing for Open Payments and Interledger.
+>
+> Built by [ShujaaPay](https://www.shujaapay.me) — contributing to the Open Payments ecosystem.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![RFC 9421](https://img.shields.io/badge/RFC-9421-blue.svg)](https://www.rfc-editor.org/rfc/rfc9421)
@@ -191,7 +193,7 @@ tests/
 
 ## Related Projects
 
-This library is part of the **ShujaaPay GNAP Stack**, built for the [Open Payments](https://openpayments.dev) ecosystem:
+This library is part of the **ShujaaPay GNAP Stack** by [ShujaaPay](https://www.shujaapay.me), contributing open-source tooling to the [Open Payments](https://openpayments.dev) ecosystem:
 
 | Repo | Description | Status |
 |------|-------------|--------|
@@ -219,3 +221,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Key areas for contributio
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://www.shujaapay.me">ShujaaPay</a> · Contributing to Open Payments
+</p>
