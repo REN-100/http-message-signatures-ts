@@ -211,8 +211,8 @@ This library is part of the **ShujaaPay GNAP Stack** by [ShujaaPay](https://www.
 
 | Repo | Description | Status |
 |------|-------------|--------|
-| [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) | `x-gnap` OpenAPI extension for GNAP security | Planned |
-| **`http-message-signatures-ts`** | **This repo** — RFC 9421 signing library | ✅ Complete |
+| [`gnap-openapi-security-scheme`](https://github.com/REN-100/gnap-openapi-security-scheme) | `x-gnap` OpenAPI extension for GNAP security | In progress |
+| **`http-message-signatures-ts`** | **This repo** — RFC 9421 signing library | In progress |
 | [`kiota-gnap-auth-ts`](https://github.com/REN-100/kiota-gnap-auth-ts) | Kiota GNAP auth provider (TypeScript) | In progress |
 | [`kiota-gnap-auth-python`](https://github.com/REN-100/kiota-gnap-auth-python) | Kiota GNAP auth provider (Python) | In progress |
 
